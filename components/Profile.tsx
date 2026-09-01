@@ -12,29 +12,47 @@ export default function Profile() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
+  const [retryCount, setRetryCount] = useState(0);
   const router = useRouter();
 
-  useEffect(() => {
+  // Fungsi fetch profil dengan retry
+  const fetchProfile = async (retry = 0) => {
     if (!user) return;
-    const fetchProfile = async () => {
-      try {
-        const docRef = doc(firestore, 'users', user.uid);
-        const docSnap = await getDoc(docRef);
-        if (docSnap.exists()) {
-          const data = docSnap.data();
-          setGender(data.gender || '');
-          setAge(data.age || '');
-          setCountry(data.country || '');
-        }
-      } catch (err: any) {
-        console.error('Error fetching profile:', err);
-        setError('Gagal memuat profil: ' + err.message);
-      } finally {
-        setLoading(false);
+    setLoading(true);
+    setError('');
+    try {
+      const docRef = doc(firestore, 'users', user.uid);
+      const docSnap = await getDoc(docRef);
+      if (docSnap.exists()) {
+        const data = docSnap.data();
+        setGender(data.gender || '');
+        setAge(data.age || '');
+        setCountry(data.country || '');
+      } else {
+        // Dokumen belum ada, biarkan kosong
+        setGender('');
+        setAge('');
+        setCountry('');
       }
-    };
-    fetchProfile();
-  }, [user]);
+    } catch (err: any) {
+      console.error('Error fetching profile:', err);
+      // Jika error karena offline dan masih bisa retry
+      if (err.message?.includes('offline') && retry < 3) {
+        setError(`Koneksi terputus, mencoba ulang (${retry + 1}/3)...`);
+        setTimeout(() => fetchProfile(retry + 1), 2000);
+        return;
+      }
+      setError('Gagal memuat profil: ' + (err.message || 'Unknown error'));
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (user) {
+      fetchProfile();
+    }
+  }, [user, retryCount]);
 
   const handleSave = async () => {
     if (!user) {
@@ -61,7 +79,7 @@ export default function Profile() {
         { merge: true }
       );
 
-      // Sinkron ke Neon juga
+      // Sinkron ke Neon (opsional)
       try {
         await fetch('/api/user/sync', {
           method: 'POST',
@@ -83,13 +101,31 @@ export default function Profile() {
       router.push('/');
     } catch (err: any) {
       console.error('Error saving profile:', err);
-      setError('Gagal menyimpan profil: ' + err.message);
+      setError('Gagal menyimpan profil: ' + (err.message || 'Unknown error'));
     } finally {
       setSaving(false);
     }
   };
 
-  if (loading) return <div className="text-center mt-10">Memuat profil...</div>;
+  if (loading) {
+    return (
+      <div className="max-w-md mx-auto mt-10 p-6 bg-white rounded-lg shadow-lg text-center">
+        {error ? (
+          <>
+            <p className="text-yellow-600 mb-4">{error}</p>
+            <button
+              onClick={() => setRetryCount((c) => c + 1)}
+              className="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600"
+            >
+              Coba Ulang
+            </button>
+          </>
+        ) : (
+          <p>Memuat profil...</p>
+        )}
+      </div>
+    );
+  }
 
   return (
     <div className="max-w-md mx-auto mt-10 p-6 bg-white rounded-lg shadow-lg">
@@ -98,6 +134,12 @@ export default function Profile() {
       {error && (
         <div className="mb-4 p-3 bg-red-100 border border-red-400 text-red-700 rounded">
           {error}
+          <button
+            onClick={() => setRetryCount((c) => c + 1)}
+            className="ml-4 bg-red-500 text-white px-3 py-1 rounded text-sm hover:bg-red-600"
+          >
+            Ulangi
+          </button>
         </div>
       )}
 
