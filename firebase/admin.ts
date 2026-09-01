@@ -1,3 +1,4 @@
+// firebase/admin.ts
 import { getApps, initializeApp, cert } from 'firebase-admin/app';
 import { getAuth } from 'firebase-admin/auth';
 import { getDatabase } from 'firebase-admin/database';
@@ -33,29 +34,7 @@ try {
   console.error('❌ Firebase Admin initialization failed:', error);
 }
 
-// Ekspor fungsi yang aman, bukan instance langsung
-export const getAdminAuth = () => {
-  if (!isInitialized) {
-    throw new Error('Firebase Admin SDK not initialized');
-  }
-  return getAuth();
-};
-
-export const getAdminDb = () => {
-  if (!isInitialized) {
-    throw new Error('Firebase Admin SDK not initialized');
-  }
-  return getDatabase();
-};
-
-export const getAdminFirestore = () => {
-  if (!isInitialized) {
-    throw new Error('Firebase Admin SDK not initialized');
-  }
-  return getFirestore();
-};
-
-// Ekspor langsung (tapi hati-hati jika belum inisialisasi)
+// Ekspor langsung (akan berfungsi jika inisialisasi berhasil)
 export const adminAuth = getAuth();
 export const adminDb = getDatabase();
 export const adminFirestore = getFirestore();
