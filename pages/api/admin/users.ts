@@ -1,8 +1,6 @@
 import { NextApiRequest, NextApiResponse } from 'next';
 import prisma from '../../../lib/prisma';
-import { adminAuth } from '../../../firebase/admin';
-import { realtimeDb } from '../../../firebase/client';
-import { ref, get } from 'firebase/database';
+import { getAdminAuth } from '../../../firebase/admin';
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   // CORS
@@ -18,18 +16,19 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
-  // Validasi environment variables penting
-  const missingEnv = [];
-  if (!process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID) missingEnv.push('NEXT_PUBLIC_FIREBASE_PROJECT_ID');
-  if (!process.env.FIREBASE_PRIVATE_KEY) missingEnv.push('FIREBASE_PRIVATE_KEY');
-  if (!process.env.FIREBASE_CLIENT_EMAIL) missingEnv.push('FIREBASE_CLIENT_EMAIL');
-  if (!process.env.DATABASE_URL) missingEnv.push('DATABASE_URL');
+  // Validasi environment variables
+  const missingEnvs = [];
+  if (!process.env.DATABASE_URL) missingEnvs.push('DATABASE_URL');
+  if (!process.env.FIREBASE_PRIVATE_KEY) missingEnvs.push('FIREBASE_PRIVATE_KEY');
+  if (!process.env.FIREBASE_CLIENT_EMAIL) missingEnvs.push('FIREBASE_CLIENT_EMAIL');
+  if (!process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID) missingEnvs.push('NEXT_PUBLIC_FIREBASE_PROJECT_ID');
 
-  if (missingEnv.length > 0) {
-    console.error('Missing environment variables:', missingEnv);
+  if (missingEnvs.length > 0) {
+    console.error('Missing env vars:', missingEnvs);
     return res.status(500).json({
       error: 'Server configuration error',
-      missing: missingEnv,
+      missing: missingEnvs,
+      tip: 'Check Vercel environment variables',
     });
   }
 
@@ -39,7 +38,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   }
 
   try {
-    // Verifikasi token Firebase
+    // Gunakan getAdminAuth() untuk mendapatkan auth instance
+    const adminAuth = getAdminAuth();
     let decodedToken;
     try {
       decodedToken = await adminAuth.verifyIdToken(token);
@@ -50,7 +50,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
     const uid = decodedToken.uid;
 
-    // Cek admin di Prisma
+    // Cek admin
     let adminUser;
     try {
       adminUser = await prisma.admin.findUnique({
@@ -87,15 +87,15 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       return res.status(500).json({ error: 'Database error', details: dbError.message });
     }
 
-    // Ambil online status dari Realtime DB
+    // Ambil online status (opsional, jika gagal lanjutkan)
     let onlineData: Record<string, any> = {};
     try {
-      const onlineRef = ref(realtimeDb, 'online');
-      const snapshot = await get(onlineRef);
+      const { realtimeDb } = await import('../../../firebase/client');
+      const { ref, get } = await import('firebase/database');
+      const snapshot = await get(ref(realtimeDb, 'online'));
       onlineData = snapshot.val() || {};
     } catch (rtdbError: any) {
       console.warn('Realtime DB fetch failed:', rtdbError.message);
-      // Lanjut tanpa online status
     }
 
     const usersWithOnline = users.map((user) => ({
@@ -109,6 +109,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     return res.status(500).json({
       error: 'Internal Server Error',
       message: error.message || 'Unknown error',
+      stack: process.env.NODE_ENV === 'development' ? error.stack : undefined,
     });
   }
 }
