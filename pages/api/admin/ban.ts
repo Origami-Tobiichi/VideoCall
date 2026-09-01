@@ -5,26 +5,29 @@ import { adminAuth } from '../../../firebase/admin';
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   if (req.method !== 'POST') return res.status(405).end();
 
-  const { userId, action } = req.body;
+  const { userId, action, reason } = req.body;
 
   const token = req.headers.authorization?.split(' ')[1];
   if (!token) return res.status(401).json({ error: 'Unauthorized' });
 
   try {
     const decodedToken = await adminAuth.verifyIdToken(token);
-    const admin = await prisma.admin.findUnique({ where: { id: decodedToken.uid } });
+    const uid = decodedToken.uid;
+    const admin = await prisma.admin.findUnique({ where: { id: uid } });
     if (!admin) return res.status(403).json({ error: 'Forbidden' });
 
+    // Update user banned status
     await prisma.user.update({
       where: { id: userId },
       data: { banned: action === 'ban' },
     });
 
+    // Log aksi
     await prisma.log.create({
       data: {
-        userId: decodedToken.uid,
-        action: `${action}_user`,
-        details: `User ${userId} was ${action}ned`,
+        userId: uid,
+        action: action === 'ban' ? 'BAN_USER' : 'UNBAN_USER',
+        details: `User ${userId} ${action}ned. Reason: ${reason || 'No reason provided'}`,
       },
     });
 
