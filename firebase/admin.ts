@@ -8,22 +8,28 @@ const clientEmail = process.env.FIREBASE_CLIENT_EMAIL;
 const projectId = process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID;
 const databaseURL = process.env.NEXT_PUBLIC_FIREBASE_DATABASE_URL;
 
-if (!privateKey || !clientEmail || !projectId) {
-  console.warn(
-    '⚠️ Firebase Admin environment variables missing. Admin APIs will not work.'
-  );
-} else if (!getApps().length) {
-  initializeApp({
-    credential: cert({
-      projectId,
-      clientEmail,
-      privateKey,
-    }),
-    databaseURL,
-  });
-  console.log('✅ Firebase Admin SDK initialized');
+// Hanya inisialisasi jika semua env tersedia
+if (privateKey && clientEmail && projectId) {
+  if (!getApps().length) {
+    try {
+      initializeApp({
+        credential: cert({
+          projectId,
+          clientEmail,
+          privateKey,
+        }),
+        databaseURL,
+      });
+      console.log('✅ Firebase Admin SDK initialized');
+    } catch (error) {
+      console.error('❌ Firebase Admin initialization failed:', error);
+    }
+  }
+} else {
+  console.warn('⚠️ Firebase Admin env variables missing. Admin APIs will not work.');
 }
 
+// Ekspor service (mungkin undefined jika inisialisasi gagal)
 export const adminAuth = getAuth();
 export const adminDb = getDatabase();
 export const adminFirestore = getFirestore();
