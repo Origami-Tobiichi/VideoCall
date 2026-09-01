@@ -3,15 +3,16 @@ import { getAuth } from 'firebase-admin/auth';
 import { getDatabase } from 'firebase-admin/database';
 import { getFirestore } from 'firebase-admin/firestore';
 
-const privateKey = process.env.FIREBASE_PRIVATE_KEY?.replace(/\\n/g, '\n');
-const clientEmail = process.env.FIREBASE_CLIENT_EMAIL;
-const projectId = process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID;
-const databaseURL = process.env.NEXT_PUBLIC_FIREBASE_DATABASE_URL;
+let isInitialized = false;
 
-// Hanya inisialisasi jika semua env tersedia
-if (privateKey && clientEmail && projectId) {
-  if (!getApps().length) {
-    try {
+try {
+  const privateKey = process.env.FIREBASE_PRIVATE_KEY?.replace(/\\n/g, '\n');
+  const clientEmail = process.env.FIREBASE_CLIENT_EMAIL;
+  const projectId = process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID;
+  const databaseURL = process.env.NEXT_PUBLIC_FIREBASE_DATABASE_URL;
+
+  if (privateKey && clientEmail && projectId) {
+    if (!getApps().length) {
       initializeApp({
         credential: cert({
           projectId,
@@ -20,16 +21,41 @@ if (privateKey && clientEmail && projectId) {
         }),
         databaseURL,
       });
+      isInitialized = true;
       console.log('✅ Firebase Admin SDK initialized');
-    } catch (error) {
-      console.error('❌ Firebase Admin initialization failed:', error);
+    } else {
+      isInitialized = true;
     }
+  } else {
+    console.warn('⚠️ Firebase Admin env variables missing');
   }
-} else {
-  console.warn('⚠️ Firebase Admin env variables missing. Admin APIs will not work.');
+} catch (error) {
+  console.error('❌ Firebase Admin initialization failed:', error);
 }
 
-// Ekspor service (mungkin undefined jika inisialisasi gagal)
+// Ekspor fungsi yang aman, bukan instance langsung
+export const getAdminAuth = () => {
+  if (!isInitialized) {
+    throw new Error('Firebase Admin SDK not initialized');
+  }
+  return getAuth();
+};
+
+export const getAdminDb = () => {
+  if (!isInitialized) {
+    throw new Error('Firebase Admin SDK not initialized');
+  }
+  return getDatabase();
+};
+
+export const getAdminFirestore = () => {
+  if (!isInitialized) {
+    throw new Error('Firebase Admin SDK not initialized');
+  }
+  return getFirestore();
+};
+
+// Ekspor langsung (tapi hati-hati jika belum inisialisasi)
 export const adminAuth = getAuth();
 export const adminDb = getDatabase();
 export const adminFirestore = getFirestore();
