@@ -8,16 +8,11 @@ const clientEmail = process.env.FIREBASE_CLIENT_EMAIL;
 const projectId = process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID;
 const databaseURL = process.env.NEXT_PUBLIC_FIREBASE_DATABASE_URL;
 
-// Validasi environment variables
 if (!privateKey || !clientEmail || !projectId) {
-  throw new Error(
-    'Missing Firebase Admin environment variables. ' +
-    'Please set FIREBASE_PRIVATE_KEY, FIREBASE_CLIENT_EMAIL, and NEXT_PUBLIC_FIREBASE_PROJECT_ID.'
+  console.warn(
+    '⚠️ Firebase Admin environment variables missing. Admin APIs will not work.'
   );
-}
-
-// Inisialisasi hanya jika belum ada
-if (!getApps().length) {
+} else if (!getApps().length) {
   initializeApp({
     credential: cert({
       projectId,
@@ -29,7 +24,6 @@ if (!getApps().length) {
   console.log('✅ Firebase Admin SDK initialized');
 }
 
-// Ekspor service yang dibutuhkan
 export const adminAuth = getAuth();
 export const adminDb = getDatabase();
 export const adminFirestore = getFirestore();
