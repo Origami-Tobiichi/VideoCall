@@ -47,27 +47,27 @@ export default function AdminPage() {
         headers: { Authorization: `Bearer ${token}` },
       });
 
-      // Baca response body SEKALI sebagai text
+      // Baca response sebagai text
       const responseText = await res.text();
 
-      // Jika response tidak OK, coba parse error dari text
       if (!res.ok) {
         let errorMsg = `HTTP ${res.status}`;
         try {
           const errData = JSON.parse(responseText);
           errorMsg = errData.error || errData.message || errorMsg;
-        } catch (e) {
-          // Jika bukan JSON, gunakan text mentah
+          if (errData.missing) {
+            errorMsg += `\nMissing: ${errData.missing.join(', ')}`;
+          }
+        } catch {
           errorMsg = responseText || errorMsg;
         }
         throw new Error(errorMsg);
       }
 
-      // Parse JSON dari text
       let data;
       try {
         data = JSON.parse(responseText);
-      } catch (e) {
+      } catch {
         throw new Error('Respons dari server tidak valid (bukan JSON)');
       }
 
@@ -92,20 +92,18 @@ export default function AdminPage() {
         body: JSON.stringify({ userId, action }),
       });
 
-      // Baca response sekali
       const responseText = await res.text();
       if (!res.ok) {
         let errorMsg = `HTTP ${res.status}`;
         try {
           const errData = JSON.parse(responseText);
           errorMsg = errData.error || errData.message || errorMsg;
-        } catch (e) {
+        } catch {
           errorMsg = responseText || errorMsg;
         }
         throw new Error(errorMsg);
       }
 
-      // Parse JSON
       const data = JSON.parse(responseText);
       if (data.success) {
         setUsers((prev) =>
@@ -113,8 +111,6 @@ export default function AdminPage() {
             u.id === userId ? { ...u, banned: action === 'ban' } : u
           )
         );
-      } else {
-        throw new Error(data.error || 'Gagal update ban');
       }
     } catch (err: any) {
       alert(err.message || 'Gagal mengubah status ban');
@@ -128,7 +124,12 @@ export default function AdminPage() {
         <div className="flex items-center justify-center h-64">
           <div className="text-center">
             <div className="text-xl">Loading...</div>
-            {error && <div className="text-red-500 mt-2">{error}</div>}
+            {error && (
+              <div className="mt-4 p-4 bg-red-50 border border-red-300 rounded text-left text-sm text-red-800 max-w-xl overflow-auto">
+                <strong>Error Detail:</strong>
+                <pre className="mt-2 whitespace-pre-wrap">{error}</pre>
+              </div>
+            )}
             {error && (
               <button
                 onClick={() => setRetryCount((c) => c + 1)}
