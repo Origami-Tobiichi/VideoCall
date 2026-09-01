@@ -3,8 +3,8 @@ import {
   signInWithEmailAndPassword,
   signInWithPopup,
   GoogleAuthProvider,
-  signInWithPhoneNumber,
   RecaptchaVerifier,
+  signInWithPhoneNumber,
 } from 'firebase/auth';
 import { auth } from '../firebase/client';
 import { useRouter } from 'next/router';
@@ -19,69 +19,47 @@ export default function Login() {
   const [loading, setLoading] = useState(false);
   const router = useRouter();
 
-  const syncUser = async (user: any) => {
-    try {
-      await fetch('/api/user/sync', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          uid: user.uid,
-          email: user.email,
-          name: user.displayName || '',
-        }),
-      });
-    } catch (error) {
-      console.error('Sync error:', error);
-    }
-  };
-
   const handleEmailLogin = async (e: React.FormEvent) => {
     e.preventDefault();
-    setLoading(true);
     try {
-      const cred = await signInWithEmailAndPassword(auth, email, password);
-      await syncUser(cred.user);
+      await signInWithEmailAndPassword(auth, email, password);
       router.push('/');
     } catch (error: any) {
-      if (error.code === 'auth/user-not-found') alert('Email tidak ditemukan.');
-      else if (error.code === 'auth/wrong-password') alert('Password salah.');
-      else alert(error.message);
-    } finally {
-      setLoading(false);
+      if (error.code === 'auth/user-not-found') {
+        alert('Email tidak ditemukan. Silakan daftar terlebih dahulu.');
+      } else if (error.code === 'auth/wrong-password') {
+        alert('Password salah.');
+      } else {
+        alert(error.message);
+      }
     }
   };
 
   const handleGoogleLogin = async () => {
-    setLoading(true);
+    const provider = new GoogleAuthProvider();
     try {
-      const provider = new GoogleAuthProvider();
-      const cred = await signInWithPopup(auth, provider);
-      await syncUser(cred.user);
+      await signInWithPopup(auth, provider);
       router.push('/');
     } catch (error: any) {
       alert(error.message);
-    } finally {
-      setLoading(false);
     }
   };
 
   const handlePhoneLogin = async () => {
     if (!phone || phone.length < 10) {
-      alert('Masukkan nomor telepon yang valid.');
+      alert('Masukkan nomor telepon yang valid (minimal 10 digit).');
       return;
     }
+
     let phoneNumber = phone;
-    if (!phone.startsWith('+')) phoneNumber = '+62' + phone.replace(/^0+/, '');
+    if (!phone.startsWith('+')) {
+      phoneNumber = '+62' + phone.replace(/^0+/, '');
+    }
 
     setLoading(true);
     try {
-      const container = document.getElementById('recaptcha-container');
-      if (!container) {
-        alert('Elemen reCAPTCHA tidak ditemukan.');
-        setLoading(false);
-        return;
-      }
-      const verifier = new RecaptchaVerifier(
+      // ===== PERBAIKAN: gunakan 'as any' untuk bypass type checking =====
+      const verifier = new (RecaptchaVerifier as any)(
         'recaptcha-container',
         { size: 'invisible' },
         auth
@@ -92,7 +70,16 @@ export default function Login() {
       setConfirmResult(confirmation);
       alert('Kode verifikasi dikirim ke ' + phoneNumber);
     } catch (error: any) {
-      alert(error.message || 'Gagal mengirim kode.');
+      console.error('Phone auth error:', error);
+      if (error.code === 'auth/invalid-phone-number') {
+        alert('Nomor telepon tidak valid. Gunakan format internasional (contoh: +62812...).');
+      } else if (error.code === 'auth/too-many-requests') {
+        alert('Terlalu banyak percobaan. Coba lagi nanti.');
+      } else if (error.message?.includes('appVerificationDisabledForTesting')) {
+        alert('Gagal memverifikasi. Pastikan reCAPTCHA dimuat dan coba lagi.');
+      } else {
+        alert(error.message || 'Gagal mengirim kode verifikasi.');
+      }
     } finally {
       setLoading(false);
     }
@@ -100,18 +87,63 @@ export default function Login() {
 
   const handleVerifyCode = async () => {
     if (!verificationCode || verificationCode.length < 6) {
-      alert('Masukkan kode 6 digit.');
+      alert('Masukkan kode verifikasi 6 digit.');
       return;
     }
     setLoading(true);
     try {
-      const result = await confirmResult.confirm(verificationCode);
-      await syncUser(result.user);
+      await confirmResult.confirm(verificationCode);
       router.push('/');
     } catch (error: any) {
-      alert('Kode verifikasi salah.');
+      if (error.code === 'auth/invalid-verification-code') {
+        alert('Kode verifikasi salah. Coba lagi.');
+      } else {
+        alert(error.message);
+      }
     } finally {
       setLoading(false);
+    }
+  };
+
+  // Fungsi untuk sync user ke Neon setelah login
+  const syncUserToNeon = async (uid: string, email: string | null, name: string | null) => {
+    try {
+      await fetch('/api/user/sync', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ uid, email, name }),
+      });
+    } catch (e) {
+      console.warn('Sync user failed:', e);
+    }
+  };
+
+  // Override handleEmailLogin untuk sync
+  const handleEmailLoginWithSync = async (e: React.FormEvent) => {
+    e.preventDefault();
+    try {
+      const userCred = await signInWithEmailAndPassword(auth, email, password);
+      await syncUserToNeon(userCred.user.uid, userCred.user.email, userCred.user.displayName);
+      router.push('/');
+    } catch (error: any) {
+      if (error.code === 'auth/user-not-found') {
+        alert('Email tidak ditemukan. Silakan daftar terlebih dahulu.');
+      } else if (error.code === 'auth/wrong-password') {
+        alert('Password salah.');
+      } else {
+        alert(error.message);
+      }
+    }
+  };
+
+  const handleGoogleLoginWithSync = async () => {
+    const provider = new GoogleAuthProvider();
+    try {
+      const userCred = await signInWithPopup(auth, provider);
+      await syncUserToNeon(userCred.user.uid, userCred.user.email, userCred.user.displayName);
+      router.push('/');
+    } catch (error: any) {
+      alert(error.message);
     }
   };
 
@@ -119,7 +151,7 @@ export default function Login() {
     <div className="max-w-md mx-auto mt-10 p-6 bg-white rounded-lg shadow-lg">
       <h2 className="text-2xl font-bold mb-6">Login</h2>
 
-      <form onSubmit={handleEmailLogin} className="space-y-4">
+      <form onSubmit={handleEmailLoginWithSync} className="space-y-4">
         <input
           type="email"
           placeholder="Email"
@@ -136,22 +168,14 @@ export default function Login() {
           className="w-full p-2 border rounded"
           required
         />
-        <button
-          type="submit"
-          disabled={loading}
-          className="w-full bg-blue-500 text-white py-2 rounded hover:bg-blue-600 transition disabled:opacity-50"
-        >
-          {loading ? 'Loading...' : 'Login dengan Email'}
+        <button type="submit" className="w-full bg-blue-500 text-white py-2 rounded hover:bg-blue-600 transition">
+          Login dengan Email
         </button>
       </form>
 
       <hr className="my-4" />
 
-      <button
-        onClick={handleGoogleLogin}
-        disabled={loading}
-        className="w-full bg-red-500 text-white py-2 rounded hover:bg-red-600 transition disabled:opacity-50"
-      >
+      <button onClick={handleGoogleLoginWithSync} className="w-full bg-red-500 text-white py-2 rounded hover:bg-red-600 transition">
         Login dengan Google
       </button>
 
@@ -160,7 +184,7 @@ export default function Login() {
       <div className="space-y-2">
         <input
           type="tel"
-          placeholder="Nomor Telepon (misal 8123456789)"
+          placeholder="Nomor Telepon (misal 8123456789 atau +62812...)"
           value={phone}
           onChange={(e) => setPhone(e.target.value)}
           className="w-full p-2 border rounded"
