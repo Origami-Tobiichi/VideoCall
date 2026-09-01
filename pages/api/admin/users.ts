@@ -5,7 +5,7 @@ import { realtimeDb } from '../../../firebase/client';
 import { ref, get } from 'firebase/database';
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
-  // Set CORS headers
+  // CORS
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Authorization, Content-Type');
@@ -18,39 +18,54 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
+  // Validasi environment variables penting
+  const missingEnv = [];
+  if (!process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID) missingEnv.push('NEXT_PUBLIC_FIREBASE_PROJECT_ID');
+  if (!process.env.FIREBASE_PRIVATE_KEY) missingEnv.push('FIREBASE_PRIVATE_KEY');
+  if (!process.env.FIREBASE_CLIENT_EMAIL) missingEnv.push('FIREBASE_CLIENT_EMAIL');
+  if (!process.env.DATABASE_URL) missingEnv.push('DATABASE_URL');
+
+  if (missingEnv.length > 0) {
+    console.error('Missing environment variables:', missingEnv);
+    return res.status(500).json({
+      error: 'Server configuration error',
+      missing: missingEnv,
+    });
+  }
+
   const token = req.headers.authorization?.split(' ')[1];
   if (!token) {
     return res.status(401).json({ error: 'Unauthorized - No token provided' });
   }
 
   try {
-    // Verify Firebase token
+    // Verifikasi token Firebase
     let decodedToken;
     try {
       decodedToken = await adminAuth.verifyIdToken(token);
-    } catch (authError) {
-      console.error('Auth verification failed:', authError);
-      return res.status(401).json({ error: 'Invalid token' });
+    } catch (authError: any) {
+      console.error('Auth verification failed:', authError.message);
+      return res.status(401).json({ error: 'Invalid token', details: authError.message });
     }
 
     const uid = decodedToken.uid;
 
-    // Check if user is admin in Prisma
+    // Cek admin di Prisma
     let adminUser;
     try {
       adminUser = await prisma.admin.findUnique({
         where: { id: uid },
       });
-    } catch (dbError) {
-      console.error('Prisma admin check failed:', dbError);
-      return res.status(500).json({ error: 'Database error while checking admin' });
+    } catch (dbError: any) {
+      console.error('Prisma admin check failed:', dbError.message);
+      return res.status(500).json({ error: 'Database error', details: dbError.message });
     }
 
     if (!adminUser) {
       return res.status(403).json({ error: 'Forbidden - Not an admin' });
     }
 
-    // Fetch all users from Prisma
+    // Ambil semua user
     let users;
     try {
       users = await prisma.user.findMany({
@@ -67,24 +82,22 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         },
         orderBy: { createdAt: 'desc' },
       });
-    } catch (dbError) {
-      console.error('Prisma fetch users failed:', dbError);
-      return res.status(500).json({ error: 'Database error while fetching users' });
+    } catch (dbError: any) {
+      console.error('Prisma fetch users failed:', dbError.message);
+      return res.status(500).json({ error: 'Database error', details: dbError.message });
     }
 
-    // Get online status from Realtime Database
-    // Beri tipe Record<string, any> agar bisa di-index dengan string
+    // Ambil online status dari Realtime DB
     let onlineData: Record<string, any> = {};
     try {
       const onlineRef = ref(realtimeDb, 'online');
       const snapshot = await get(onlineRef);
       onlineData = snapshot.val() || {};
-    } catch (rtdbError) {
-      console.warn('Realtime DB fetch failed:', rtdbError);
-      // onlineData tetap kosong
+    } catch (rtdbError: any) {
+      console.warn('Realtime DB fetch failed:', rtdbError.message);
+      // Lanjut tanpa online status
     }
 
-    // Tambahkan isOnline ke setiap user
     const usersWithOnline = users.map((user) => ({
       ...user,
       isOnline: !!onlineData[user.id],
