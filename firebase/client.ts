@@ -2,6 +2,7 @@ import { initializeApp, getApp, getApps } from 'firebase/app';
 import { getAuth } from 'firebase/auth';
 import { getFirestore } from 'firebase/firestore';
 import { getDatabase } from 'firebase/database';
+import { initializeAppCheck, ReCaptchaV3Provider } from 'firebase/app-check';
 
 const firebaseConfig = {
   apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY,
@@ -14,6 +15,16 @@ const firebaseConfig = {
 };
 
 const app = !getApps().length ? initializeApp(firebaseConfig) : getApp();
+
+// Inisialisasi App Check (hanya di client-side)
+if (typeof window !== 'undefined' && process.env.NEXT_PUBLIC_APP_CHECK_SITE_KEY) {
+  initializeAppCheck(app, {
+    provider: new ReCaptchaV3Provider(process.env.NEXT_PUBLIC_APP_CHECK_SITE_KEY),
+    isTokenAutoRefreshEnabled: true,
+  });
+  console.log('✅ App Check initialized');
+}
+
 const auth = getAuth(app);
 const firestore = getFirestore(app);
 const realtimeDb = getDatabase(app);
