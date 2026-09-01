@@ -11,6 +11,7 @@ export default function Profile() {
   const [country, setCountry] = useState('');
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
   const router = useRouter();
 
   useEffect(() => {
@@ -25,8 +26,9 @@ export default function Profile() {
           setAge(data.age || '');
           setCountry(data.country || '');
         }
-      } catch (error) {
-        console.error('Error fetching profile:', error);
+      } catch (err: any) {
+        console.error('Error fetching profile:', err);
+        setError('Gagal memuat profil: ' + err.message);
       } finally {
         setLoading(false);
       }
@@ -43,15 +45,45 @@ export default function Profile() {
       alert('Pilih gender terlebih dahulu.');
       return;
     }
+
     setSaving(true);
+    setError('');
     try {
       const docRef = doc(firestore, 'users', user.uid);
-      await setDoc(docRef, { gender, age, country }, { merge: true });
+      await setDoc(
+        docRef,
+        {
+          gender,
+          age: age || '',
+          country: country || '',
+          updatedAt: new Date().toISOString(),
+        },
+        { merge: true }
+      );
+
+      // Sinkron ke Neon juga
+      try {
+        await fetch('/api/user/sync', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            uid: user.uid,
+            email: user.email,
+            name: user.displayName,
+            gender,
+            age: parseInt(age) || null,
+            country,
+          }),
+        });
+      } catch (syncErr) {
+        console.warn('Sync to Neon failed:', syncErr);
+      }
+
       alert('Profil berhasil disimpan!');
       router.push('/');
-    } catch (error) {
-      console.error('Error saving profile:', error);
-      alert('Gagal menyimpan profil. Coba lagi.');
+    } catch (err: any) {
+      console.error('Error saving profile:', err);
+      setError('Gagal menyimpan profil: ' + err.message);
     } finally {
       setSaving(false);
     }
@@ -62,6 +94,13 @@ export default function Profile() {
   return (
     <div className="max-w-md mx-auto mt-10 p-6 bg-white rounded-lg shadow-lg">
       <h2 className="text-2xl font-bold mb-6">Profil</h2>
+
+      {error && (
+        <div className="mb-4 p-3 bg-red-100 border border-red-400 text-red-700 rounded">
+          {error}
+        </div>
+      )}
+
       <div className="space-y-4">
         <div>
           <label className="block text-sm font-medium mb-1">Gender</label>
@@ -71,11 +110,12 @@ export default function Profile() {
             className="w-full p-2 border rounded"
           >
             <option value="">Pilih</option>
-            <option value="Pria">Pria</option>
-            <option value="Wanita">Wanita</option>
-            <option value="Lainnya">Lainnya</option>
+            <option value="Pria">👨 Pria</option>
+            <option value="Wanita">👩 Wanita</option>
+            <option value="Lainnya">⚧ Lainnya</option>
           </select>
         </div>
+
         <div>
           <label className="block text-sm font-medium mb-1">Usia</label>
           <input
@@ -84,18 +124,40 @@ export default function Profile() {
             onChange={(e) => setAge(e.target.value)}
             placeholder="Masukkan usia"
             className="w-full p-2 border rounded"
+            min="1"
+            max="100"
           />
         </div>
+
         <div>
           <label className="block text-sm font-medium mb-1">Negara</label>
-          <input
-            type="text"
+          <select
             value={country}
             onChange={(e) => setCountry(e.target.value)}
-            placeholder="Indonesia, USA, dll."
             className="w-full p-2 border rounded"
-          />
+          >
+            <option value="">Pilih negara</option>
+            <option value="Indonesia">🇮🇩 Indonesia</option>
+            <option value="Malaysia">🇲🇾 Malaysia</option>
+            <option value="Singapore">🇸🇬 Singapore</option>
+            <option value="Thailand">🇹🇭 Thailand</option>
+            <option value="Vietnam">🇻🇳 Vietnam</option>
+            <option value="Philippines">🇵🇭 Philippines</option>
+            <option value="United States">🇺🇸 United States</option>
+            <option value="United Kingdom">🇬🇧 United Kingdom</option>
+            <option value="Japan">🇯🇵 Japan</option>
+            <option value="South Korea">🇰🇷 South Korea</option>
+            <option value="China">🇨🇳 China</option>
+            <option value="India">🇮🇳 India</option>
+            <option value="Australia">🇦🇺 Australia</option>
+            <option value="Germany">🇩🇪 Germany</option>
+            <option value="France">🇫🇷 France</option>
+            <option value="Brazil">🇧🇷 Brazil</option>
+            <option value="Russia">🇷🇺 Russia</option>
+            <option value="Other">🌍 Other</option>
+          </select>
         </div>
+
         <button
           onClick={handleSave}
           disabled={saving}
