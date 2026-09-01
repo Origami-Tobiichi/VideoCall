@@ -1,6 +1,6 @@
 import { NextApiRequest, NextApiResponse } from 'next';
 import prisma from '../../../lib/prisma';
-import { getAdminAuth } from '../../../firebase/admin';
+import { adminAuth, adminDb } from '../../../firebase/admin';
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   // CORS
@@ -28,7 +28,6 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     return res.status(500).json({
       error: 'Server configuration error',
       missing: missingEnvs,
-      tip: 'Check Vercel environment variables',
     });
   }
 
@@ -38,8 +37,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   }
 
   try {
-    // Gunakan getAdminAuth() untuk mendapatkan auth instance
-    const adminAuth = getAdminAuth();
+    // Verifikasi token dengan Admin SDK
     let decodedToken;
     try {
       decodedToken = await adminAuth.verifyIdToken(token);
@@ -50,7 +48,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
     const uid = decodedToken.uid;
 
-    // Cek admin
+    // Cek admin di Prisma
     let adminUser;
     try {
       adminUser = await prisma.admin.findUnique({
@@ -65,7 +63,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       return res.status(403).json({ error: 'Forbidden - Not an admin' });
     }
 
-    // Ambil semua user
+    // Ambil semua user dari Prisma
     let users;
     try {
       users = await prisma.user.findMany({
@@ -87,15 +85,15 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       return res.status(500).json({ error: 'Database error', details: dbError.message });
     }
 
-    // Ambil online status (opsional, jika gagal lanjutkan)
+    // Ambil online status menggunakan Admin SDK (bypass permission)
     let onlineData: Record<string, any> = {};
     try {
-      const { realtimeDb } = await import('../../../firebase/client');
-      const { ref, get } = await import('firebase/database');
-      const snapshot = await get(ref(realtimeDb, 'online'));
+      // Gunakan adminDb (bukan realtimeDb dari client SDK)
+      const snapshot = await adminDb.ref('online').once('value');
       onlineData = snapshot.val() || {};
     } catch (rtdbError: any) {
-      console.warn('Realtime DB fetch failed:', rtdbError.message);
+      console.warn('Realtime DB fetch failed (admin SDK):', rtdbError.message);
+      // Lanjut tanpa online status
     }
 
     const usersWithOnline = users.map((user) => ({
@@ -109,7 +107,6 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     return res.status(500).json({
       error: 'Internal Server Error',
       message: error.message || 'Unknown error',
-      stack: process.env.NODE_ENV === 'development' ? error.stack : undefined,
     });
   }
 }
