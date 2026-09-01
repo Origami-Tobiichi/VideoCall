@@ -3,6 +3,14 @@ import prisma from '../../../lib/prisma';
 import { adminAuth } from '../../../firebase/admin';
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Authorization, Content-Type');
+
+  if (req.method === 'OPTIONS') {
+    return res.status(200).end();
+  }
+
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed' });
   }
@@ -21,8 +29,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     const decodedToken = await adminAuth.verifyIdToken(token);
     const uid = decodedToken.uid;
 
-    const admin = await prisma.admin.findUnique({ where: { id: uid } });
-    if (!admin) {
+    const adminUser = await prisma.admin.findUnique({ where: { id: uid } });
+    if (!adminUser) {
       return res.status(403).json({ error: 'Forbidden' });
     }
 
@@ -31,7 +39,6 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       data: { banned: action === 'ban' },
     });
 
-    // Log aksi
     await prisma.log.create({
       data: {
         userId: uid,
@@ -43,6 +50,6 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     return res.status(200).json({ success: true, user: updatedUser });
   } catch (error: any) {
     console.error('Ban API error:', error);
-    return res.status(500).json({ error: error.message });
+    return res.status(500).json({ error: error.message || 'Internal server error' });
   }
 }
