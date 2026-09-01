@@ -1,6 +1,11 @@
 import { initializeApp, getApp, getApps } from 'firebase/app';
 import { getAuth } from 'firebase/auth';
-import { getFirestore } from 'firebase/firestore';
+import { 
+  getFirestore, 
+  initializeFirestore, 
+  enableIndexedDbPersistence, 
+  CACHE_SIZE_UNLIMITED 
+} from 'firebase/firestore';
 import { getDatabase } from 'firebase/database';
 import { initializeAppCheck, ReCaptchaV3Provider } from 'firebase/app-check';
 
@@ -16,13 +21,31 @@ const firebaseConfig = {
 
 const app = !getApps().length ? initializeApp(firebaseConfig) : getApp();
 
-// Inisialisasi App Check (hanya di client-side)
+// Inisialisasi Firestore dengan persistence (offline support)
+if (typeof window !== 'undefined') {
+  // Inisialisasi Firestore dengan cache unlimited
+  initializeFirestore(app, {
+    cacheSizeBytes: CACHE_SIZE_UNLIMITED,
+  });
+
+  // Aktifkan persistence
+  enableIndexedDbPersistence(getFirestore(app)).catch((err) => {
+    if (err.code === 'failed-precondition') {
+      console.warn('⚠️ Multiple tabs open, persistence can only be enabled in one tab at a time.');
+    } else if (err.code === 'unimplemented') {
+      console.warn('⚠️ Browser does not support persistence.');
+    } else {
+      console.warn('⚠️ Persistence error:', err);
+    }
+  });
+}
+
+// App Check (opsional)
 if (typeof window !== 'undefined' && process.env.NEXT_PUBLIC_APP_CHECK_SITE_KEY) {
   initializeAppCheck(app, {
     provider: new ReCaptchaV3Provider(process.env.NEXT_PUBLIC_APP_CHECK_SITE_KEY),
     isTokenAutoRefreshEnabled: true,
   });
-  console.log('✅ App Check initialized');
 }
 
 const auth = getAuth(app);
