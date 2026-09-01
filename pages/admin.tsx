@@ -47,21 +47,30 @@ export default function AdminPage() {
         headers: { Authorization: `Bearer ${token}` },
       });
 
+      // Baca response body SEKALI sebagai text
+      const responseText = await res.text();
+
+      // Jika response tidak OK, coba parse error dari text
       if (!res.ok) {
-        // Coba ambil error message dari response
         let errorMsg = `HTTP ${res.status}`;
         try {
-          const errData = await res.json();
+          const errData = JSON.parse(responseText);
           errorMsg = errData.error || errData.message || errorMsg;
         } catch (e) {
-          // Jika response bukan JSON, ambil text
-          const text = await res.text();
-          errorMsg = text || errorMsg;
+          // Jika bukan JSON, gunakan text mentah
+          errorMsg = responseText || errorMsg;
         }
         throw new Error(errorMsg);
       }
 
-      const data = await res.json();
+      // Parse JSON dari text
+      let data;
+      try {
+        data = JSON.parse(responseText);
+      } catch (e) {
+        throw new Error('Respons dari server tidak valid (bukan JSON)');
+      }
+
       setUsers(data);
     } catch (err: any) {
       console.error('Fetch users error:', err);
@@ -83,16 +92,30 @@ export default function AdminPage() {
         body: JSON.stringify({ userId, action }),
       });
 
+      // Baca response sekali
+      const responseText = await res.text();
       if (!res.ok) {
-        const errData = await res.json().catch(() => ({}));
-        throw new Error(errData.error || 'Gagal update ban');
+        let errorMsg = `HTTP ${res.status}`;
+        try {
+          const errData = JSON.parse(responseText);
+          errorMsg = errData.error || errData.message || errorMsg;
+        } catch (e) {
+          errorMsg = responseText || errorMsg;
+        }
+        throw new Error(errorMsg);
       }
 
-      setUsers((prev) =>
-        prev.map((u) =>
-          u.id === userId ? { ...u, banned: action === 'ban' } : u
-        )
-      );
+      // Parse JSON
+      const data = JSON.parse(responseText);
+      if (data.success) {
+        setUsers((prev) =>
+          prev.map((u) =>
+            u.id === userId ? { ...u, banned: action === 'ban' } : u
+          )
+        );
+      } else {
+        throw new Error(data.error || 'Gagal update ban');
+      }
     } catch (err: any) {
       alert(err.message || 'Gagal mengubah status ban');
     }
