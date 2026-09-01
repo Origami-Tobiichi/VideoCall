@@ -15,6 +15,11 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
+  // Validasi env
+  if (!process.env.DATABASE_URL) {
+    return res.status(500).json({ error: 'DATABASE_URL not configured' });
+  }
+
   const { userId, action } = req.body;
   if (!userId || !action || !['ban', 'unban'].includes(action)) {
     return res.status(400).json({ error: 'Invalid parameters' });
