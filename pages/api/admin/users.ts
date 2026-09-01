@@ -1,8 +1,8 @@
 import { NextApiRequest, NextApiResponse } from 'next';
 import prisma from '../../../lib/prisma';
 import { adminAuth } from '../../../firebase/admin';
-import { getDatabase, ref, get } from 'firebase/database';
 import { realtimeDb } from '../../../firebase/client';
+import { ref, get } from 'firebase/database';
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   // Set CORS headers
@@ -73,16 +73,18 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     }
 
     // Get online status from Realtime Database
-    let onlineData = {};
+    // Beri tipe Record<string, any> agar bisa di-index dengan string
+    let onlineData: Record<string, any> = {};
     try {
       const onlineRef = ref(realtimeDb, 'online');
       const snapshot = await get(onlineRef);
       onlineData = snapshot.val() || {};
     } catch (rtdbError) {
       console.warn('Realtime DB fetch failed:', rtdbError);
-      // Continue without online status
+      // onlineData tetap kosong
     }
 
+    // Tambahkan isOnline ke setiap user
     const usersWithOnline = users.map((user) => ({
       ...user,
       isOnline: !!onlineData[user.id],
