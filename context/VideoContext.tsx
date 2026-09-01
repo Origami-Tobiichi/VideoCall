@@ -16,6 +16,9 @@ interface VideoContextType {
   remoteStream: MediaStream | null;
   preference: string;
   setPreference: (val: string) => void;
+  partnerData: { gender: string; country: string; name: string } | null;
+  isFullScreen: boolean;
+  toggleFullScreen: () => void;
 }
 
 const VideoContext = createContext<VideoContextType | null>(null);
@@ -26,30 +29,21 @@ export const VideoProvider = ({ children }: { children: React.ReactNode }) => {
   const [localStream, setLocalStream] = useState<MediaStream | null>(null);
   const [remoteStream, setRemoteStream] = useState<MediaStream | null>(null);
   const [preference, setPreference] = useState('all');
+  const [partnerData, setPartnerData] = useState<{ gender: string; country: string; name: string } | null>(null);
+  const [isFullScreen, setIsFullScreen] = useState(false);
 
   const peerRef = useRef<any>(null);
   const callRef = useRef<any>(null);
   const queueRef = useRef<any>(null);
   const matchListenerRef = useRef<any>(null);
 
-  // Cek banned dari PostgreSQL
-  const checkBanned = async (uid: string) => {
-    try {
-      const res = await fetch(`/api/user/check-banned?uid=${uid}`);
-      const data = await res.json();
-      return data.banned || false;
-    } catch (error) {
-      console.error('Error checking ban:', error);
-      return false;
-    }
-  };
-
-  // Ambil data user dari Firestore
   const getUserData = async (uid: string) => {
     try {
       const docRef = doc(firestore, 'users', uid);
       const docSnap = await getDoc(docRef);
-      if (docSnap.exists()) return docSnap.data();
+      if (docSnap.exists()) {
+        return docSnap.data();
+      }
       return null;
     } catch (error) {
       console.error('Error fetching user data:', error);
@@ -57,7 +51,10 @@ export const VideoProvider = ({ children }: { children: React.ReactNode }) => {
     }
   };
 
-  // Inisialisasi PeerJS dan media
+  const toggleFullScreen = () => {
+    setIsFullScreen(!isFullScreen);
+  };
+
   useEffect(() => {
     if (!user) return;
 
@@ -83,8 +80,18 @@ export const VideoProvider = ({ children }: { children: React.ReactNode }) => {
           }
         });
 
-        peer.on('call', (call: any) => {
+        peer.on('call', async (call: any) => {
           if (localStream) {
+            // Dapatkan data partner dari caller
+            const partnerId = call.peer;
+            const partnerData = await getUserData(partnerId);
+            if (partnerData) {
+              setPartnerData({
+                gender: partnerData.gender || 'Tidak diketahui',
+                country: partnerData.country || 'Tidak diketahui',
+                name: partnerData.name || 'Partner',
+              });
+            }
             call.answer(localStream);
             call.on('stream', (remoteStream: MediaStream) => {
               setRemoteStream(remoteStream);
@@ -103,7 +110,7 @@ export const VideoProvider = ({ children }: { children: React.ReactNode }) => {
     };
 
     navigator.mediaDevices
-      .getUserMedia({ video: true, audio: true })
+      .getUserMedia({ video: { facingMode: 'user' }, audio: true })
       .then((stream) => setLocalStream(stream))
       .catch((err) => {
         console.error('Media error:', err);
@@ -150,8 +157,9 @@ export const VideoProvider = ({ children }: { children: React.ReactNode }) => {
     }
 
     // Cek banned
-    const isBanned = await checkBanned(user.uid);
-    if (isBanned) {
+    const res = await fetch(`/api/user/check-banned?uid=${user.uid}`);
+    const data = await res.json();
+    if (data.banned) {
       alert('Akun Anda telah dibanned oleh admin.');
       return;
     }
@@ -187,11 +195,18 @@ export const VideoProvider = ({ children }: { children: React.ReactNode }) => {
 
             let isMatch = false;
             if (preference === 'all') isMatch = true;
-            else if (preference === 'opposite') isMatch = (myGender !== partnerGender);
-            else if (preference === 'same') isMatch = (myGender === partnerGender);
+            else if (preference === 'opposite') isMatch = myGender !== partnerGender;
+            else if (preference === 'same') isMatch = myGender === partnerGender;
 
             if (isMatch) {
               remove(ref(realtimeDb, `matches/${key}`));
+              if (partnerData) {
+                setPartnerData({
+                  gender: partnerData.gender || 'Tidak diketahui',
+                  country: partnerData.country || 'Tidak diketahui',
+                  name: partnerData.name || 'Partner',
+                });
+              }
               if (localStream) {
                 const call = peerRef.current.call(partnerId, localStream);
                 if (call) {
@@ -213,12 +228,18 @@ export const VideoProvider = ({ children }: { children: React.ReactNode }) => {
 
             let isMatch = false;
             if (preference === 'all') isMatch = true;
-            else if (preference === 'opposite') isMatch = (myGender !== partnerGender);
-            else if (preference === 'same') isMatch = (myGender === partnerGender);
+            else if (preference === 'opposite') isMatch = myGender !== partnerGender;
+            else if (preference === 'same') isMatch = myGender === partnerGender;
 
             if (isMatch) {
               remove(ref(realtimeDb, `matches/${key}`));
-              // Panggilan akan ditangani oleh peer.on('call')
+              if (partnerData) {
+                setPartnerData({
+                  gender: partnerData.gender || 'Tidak diketahui',
+                  country: partnerData.country || 'Tidak diketahui',
+                  name: partnerData.name || 'Partner',
+                });
+              }
             } else {
               remove(ref(realtimeDb, `matches/${key}`));
             }
@@ -243,6 +264,7 @@ export const VideoProvider = ({ children }: { children: React.ReactNode }) => {
       setRemoteStream(null);
     }
     setIsCalling(false);
+    setPartnerData(null);
     if (queueRef.current) {
       remove(ref(realtimeDb, `queue/${queueRef.current.key}`));
       queueRef.current = null;
@@ -265,6 +287,9 @@ export const VideoProvider = ({ children }: { children: React.ReactNode }) => {
         remoteStream,
         preference,
         setPreference,
+        partnerData,
+        isFullScreen,
+        toggleFullScreen,
       }}
     >
       {children}
